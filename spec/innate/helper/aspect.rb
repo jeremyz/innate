@@ -27,6 +27,16 @@ class AspectAllSpec
   def with_instance_var_second; "#{@foo} to the #{@bar}"; end
 end
 
+class AspectDerivedWithLayout < AspectAllSpec
+  map '/derived'
+  provide(:html, :None)
+  layout :page
+
+  def page
+    "Content: #{@content}"
+  end
+end
+
 class AspecNoMethodSpec
   Innate.node('/without_method', self)
   include Innate::Node
@@ -58,9 +68,11 @@ describe Innate::Helper::Aspect do
 
   it 'calls before_all and after_all' do
     $aspect_spec_before_all = $aspect_spec_after_all = 0
+
     get('/all/before_first').body.should == '42'
     $aspect_spec_before_all.should == 42
     $aspect_spec_after_all.should == 40
+
     get('/all/before_second').body.should == '84'
     $aspect_spec_before_all.should == 84
     $aspect_spec_after_all.should == 80
@@ -71,5 +83,17 @@ describe Innate::Helper::Aspect do
     get('/all/with_instance_var_first').body.should == 'Hello World'
     get('/all/with_instance_var_second').body.should == 'Hello to the World'
     get('/without_method/aspect_hello').body.should == "Hello World!"
+  end
+
+  it 'calls before_all and after_all in the superclass' do
+    $aspect_spec_before_all = $aspect_spec_after_all = 0
+
+    get('/derived/before_first').body.should == 'Content: 42'
+    $aspect_spec_before_all.should == 42
+    $aspect_spec_after_all.should == 40
+
+    get('/derived/before_second').body.should == 'Content: 84'
+    $aspect_spec_before_all.should == 84
+    $aspect_spec_after_all.should == 80
   end
 end

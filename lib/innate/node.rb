@@ -47,12 +47,17 @@ module Innate
     trait :layout         => nil
     trait :alias_view     => {}
     trait :provide        => {}
+    trait :fast_mappings  => false
 
     # @see wrap_action_call
     trait :wrap           => SortedSet.new
     trait :provide_set    => false
     trait :needs_method   => false
     trait :skip_node_map  => false
+
+    # @see patterns_for
+    trait :separate_default_action => false
+    trait :default_action_name => 'index'
 
     # Upon inclusion we make ourselves comfortable.
     def self.included(into)
@@ -138,7 +143,7 @@ module Innate
     # @author manveru
     def map(location)
       trait :skip_node_map => true
-      Innate.map(location, self) if location
+      Innate.map(location, self)
     end
 
     # Specify which way contents are provided and processed.
@@ -226,7 +231,7 @@ module Innate
     end
 
     def provides
-      ancestral_trait.reject{|k,v| k !~ /_handler$/ }
+      ancestral_trait.reject{|key, value| key !~ /_handler$/ }
     end
 
     # This makes the Node a valid application for Rack.
@@ -339,6 +344,7 @@ module Innate
     # @see Innate::Response Node#try_resolve
     # @author manveru
     def action_missing(path)
+      response = Current.response
       response.status = 404
       response['Content-Type'] = 'text/plain'
       response.write("No action found at: %p" % path)
@@ -513,7 +519,7 @@ module Innate
     # @example
     #
     #   Hi.update_method_arities
-    #   # => {'index' => 0, 'foo' => -1, 'bar => 2}
+    #   # => {'index' => 0, 'foo' => -1, 'bar' => 2}
     #
     # @api internal
     # @see Node#resolve
@@ -522,7 +528,7 @@ module Innate
       @method_arities = {}
 
       exposed = ancestors & Helper::EXPOSE.to_a
-      higher = ancestors.select{|a| a < Innate::Node }
+      higher = ancestors.select{|ancestor| ancestor < Innate::Node }
 
       (higher + exposed).reverse_each do |ancestor|
         ancestor.public_instance_methods(false).each do |im|
@@ -661,13 +667,13 @@ module Innate
     #   of multitudes of obscure options and methods like deny_layout we simply
     #   take a block and use the returned value as the name for the layout. No
     #   layout will be used if the block returns nil.
-    def layout(name = nil, &block)
-      if name and block
+    def layout(layout_name = nil, &block)
+      if layout_name and block
         # default name, but still check with block
-        trait(:layout => lambda{|n, w| name if block.call(n, w) })
-      elsif name
+        trait(:layout => lambda{|name, wish| layout_name.to_s if block.call(name, wish) })
+      elsif layout_name
         # name of a method or template
-        trait(:layout => name.to_s)
+        trait(:layout => layout_name.to_s)
       elsif block
         # call block every request with name and wish, returned value is name
         # of layout template or method
@@ -719,14 +725,21 @@ module Innate
     # @see Node#fill_action
     # @author manveru
     def patterns_for(path)
+      default_action_name = ancestral_trait[:default_action_name]
+      separate_default_action = ancestral_trait[:separate_default_action]
+
       atoms = path.split('/')
       atoms.delete('')
       result = nil
-
       atoms.size.downto(0) do |len|
         action_name = atoms[0...len].join('__')
+
+        next if separate_default_action && action_name == default_action_name
+
         params = atoms[len..-1]
-        action_name = 'index' if action_name.empty? and params != ['index']
+
+        action_name = default_action_name if action_name.empty? &&
+          (separate_default_action || params != [default_action_name])
 
         return result if result = yield(action_name, params)
       end
@@ -784,11 +797,19 @@ module Innate
     end
 
     def update_view_mappings
+      if ancestral_trait[:fast_mappings]
+        return @view_templates if instance_variable_defined?(:@view_templates)
+      end
+
       paths = possible_paths_for(view_mappings)
       @view_templates = update_mapping_shared(paths)
     end
 
     def update_layout_mappings
+      if ancestral_trait[:fast_mappings]
+        return @layout_templates if instance_variable_defined?(:@layout_templates)
+      end
+
       paths = possible_paths_for(layout_mappings)
       @layout_templates = update_mapping_shared(paths)
     end
@@ -1021,7 +1042,7 @@ module Innate
     def node_from_backtrace(backtrace)
       filename, lineno = backtrace[0].split(':', 2)
       regexp = /^\s*class\s+(\S+)/
-      File.readlines(filename)[0..lineno.to_i].reverse.find{|l| l =~ regexp }
+      File.readlines(filename)[0..lineno.to_i].reverse.find{|ln| ln =~ regexp }
       const_get($1)
     end
   end

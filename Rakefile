@@ -15,9 +15,14 @@ DEPENDENCIES = {
 
 DEVELOPMENT_DEPENDENCIES = {
   'bacon'     => {:version => '>= 1.1.0'},
-  'json'      => {:version => '~> 1.1.6'},
-  'rack-test' => {:version => '>= 0.3.0', :lib => 'rack/test'}
+  'rack-test' => {:version => '>= 0.5.0', :lib => 'rack/test'}
 }
+
+if defined?(RUBY_PLATFORM) && RUBY_PLATFORM =~ /jruby/
+  DEVELOPMENT_DEPENDENCIES['json-jruby'] = {:version => '~> 1.1.7'}
+else
+  DEVELOPMENT_DEPENDENCIES['json'] = {:version => '~> 1.1.9'}
+end
 
 GEMSPEC = Gem::Specification.new{|s|
   s.name         = 'innate'
